@@ -36,22 +36,25 @@ def generate_questions(job_posting, base64_img_data_url):
                         {"role": "user", "content": [{"type": "text", "text": f"Link: {job_posting}"},
                                                     {"type": "image_url", 
                                                      "image_url": {"url": base64_img_data_url}}]}],
-                    max_tokens=1000, temperature=0.8)
+                    max_tokens=2000, temperature=0.6)
     summary = response.choices[0].message.content.strip()
-    print(extract_questions(summary))
+    print(questions_list(summary))
     return summary
 
-def extract_questions(text):
-    questions = []
-    # Split the text into lines
-    lines = text.split('\n')
-    # Pattern to match the numbered questions
-    pattern = re.compile(r'^\d+\.\s+\*\*(.+?)\*\*')
-    for line in lines:
-        match = pattern.match(line.strip())
-        if match:
-            questions.append(match.group(1))
-    return questions
+def questions_list(questions):
+    prompt = "You need to take the user prompt and parse out ONLY the interview queestions. Your response should only contain the interview questions, making sure they are numbered."
+    input_params = {
+        "model": "gpt-3.5-turbo",
+        "messages":[{"role": "system", "content": prompt},
+                    {"role": "user", "content": [{"type": "text", "text": f"{questions}"},]}],
+        "temperature": 0.1,
+        "max_tokens": 2000
+
+    }
+    response = client.chat.completions.create(**input_params).choices[0].message.content.strip()
+    return response
+
+
 
 #def generate_cover_letter
 
