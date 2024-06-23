@@ -2,6 +2,7 @@ from openai import OpenAI
 import base64
 from pdf2image import convert_from_bytes
 from io import BytesIO
+import re
 
 client = OpenAI(api_key='sk-proj-8h8YSkEOQss5XNj53ZO9T3BlbkFJvqDTvPIoHDnkuK48aBi8')
 
@@ -37,7 +38,20 @@ def generate_questions(job_posting, base64_img_data_url):
                                                      "image_url": {"url": base64_img_data_url}}]}],
                     max_tokens=1000, temperature=0.8)
     summary = response.choices[0].message.content.strip()
+    print(extract_questions(summary))
     return summary
+
+def extract_questions(text):
+    questions = []
+    # Split the text into lines
+    lines = text.split('\n')
+    # Pattern to match the numbered questions
+    pattern = re.compile(r'^\d+\.\s+\*\*(.+?)\*\*')
+    for line in lines:
+        match = pattern.match(line.strip())
+        if match:
+            questions.append(match.group(1))
+    return questions
 
 #def generate_cover_letter
 
