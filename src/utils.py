@@ -3,8 +3,21 @@ import base64
 from pdf2image import convert_from_bytes
 from io import BytesIO
 import re
+import asyncio
+import uuid
+from hume import HumeVoiceClient, VoiceConfig
+from twilio.rest import Client
+import os
+from dotenv import load_dotenv
 
-client = OpenAI(api_key='sk-proj-8h8YSkEOQss5XNj53ZO9T3BlbkFJvqDTvPIoHDnkuK48aBi8')
+load_dotenv()
+OPENAI_KEY = os.getenv("OPENAI_KEY")
+client = OpenAI(api_key=OPENAI_KEY)
+HUME_API_KEY = os.getenv("HUME_API_KEY")
+TWILIO_ACCOUNT_SID=os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN=os.getenv("TWILIO_AUTH_TOKEN")
+CONFIG_ID=None
+client = HumeVoiceClient(HUME_API_KEY)
 
 def get_base64_pdf_image(resume_image):    
     # Assuming we want the first page
@@ -23,11 +36,17 @@ def get_base64_pdf_image(resume_image):
 
 def generate_questions(job_posting, base64_img_data_url):
     if job_posting == "None":
-        prompt = "You are a job recruiter. You are given a resume and your job is to provide a list of questions that you want to ask based on the resume that you are given, and sample responses the interviewee can provide based on this resume. Please have each sample response under each potential question."
+        prompt = """You are a job recruiter. 
+        You are given a resume and your job is to provide a list of questions that you want to ask based on the resume that you are given, 
+        and sample responses the interviewee can provide based on this resume. Please have each sample response under each potential question."""
     else:
-        # prompt = "You are a recruiter who is hiring for the job at the provided link. You are given a resume and your job is to provide a list of questions that you want to ask based on the resume that you are given and the job posting, and sample responses the interviewee can provide based on this resume. Please make sure the questions are as specific to the job posting as possible, including questions involving specific job requirements and responsibilities. Please have each sample response under each potential question."
-
-        prompt = "You are a recruiter who is hiring for a given job based on its description. You are given a resume and your job is to provide a list of questions that you want to ask based on the resume that you are given and sample responses that the interviewee can provide. Please have each sample response under each potential question. Also consider the job description, and your company knowledge which you will understand via a web search. Start off with general questions first, like 'tell me about yourself'. Try to simulate real-life interview questions as much as possible with the context of the job. You need to understand the company and what they do via a web search."
+        prompt = f"""You are a recruiter who is hiring for the job based on its description. The link is here: {job_posting}
+        You are given a resume and your job is to provide a list of questions that you want to ask 
+        based on the resume that you are given and sample responses that the interviewee can provide. 
+        Please have each sample response under each potential question. Also consider the job description, 
+        and your company knowledge which you will understand via a web search. Start off with general questions first, 
+        like 'tell me about yourself'. Try to simulate real-life interview questions as much as possible with the context of the job. 
+        You need to understand the company and what they do via a web search."""
     
     response = client.chat.completions.create(
                     model="gpt-4o",
@@ -42,7 +61,7 @@ def generate_questions(job_posting, base64_img_data_url):
     return summary
 
 def questions_list(questions):
-    prompt = "You need to take the user prompt and parse out ONLY the interview queestions. Your response should only contain the interview questions, making sure they are numbered."
+    prompt = "You need to take the user prompt and parse out ONLY the interview questions. Your response should only contain the interview questions, making sure they are numbered."
     input_params = {
         "model": "gpt-3.5-turbo",
         "messages":[{"role": "system", "content": prompt},
@@ -54,10 +73,64 @@ def questions_list(questions):
     response = client.chat.completions.create(**input_params).choices[0].message.content.strip()
     return response
 
+# Configuring Hume AI Prompt
+
+def generate_unique_id():
+    return str(uuid.uuid4())
+
+def make_prompt_and_config(name="Toufiq", link="https://wellfound.com/jobs/3045197-senior-data-scientist?utm_campaign=google_jobs_apply&utm_source=google_jobs_apply&utm_medium=organic"):
+    
+    prompt = f"""You are a recruiter who is hiring for a given job based on its description. 
+    The link to the job is here: {link}
+
+    Make sure you do a web search on this job description to understand it before talking to the client.
+    You are given a resume and your job is to assess candidate fit based on your understanding of the job description, 
+    the organization that is hiring for the particular role, and the candidate's experiences as outlined in their resume. 
+    You will do this by asking behavioral questions pertaining to the role. Assume that you are on call with the candidate.
+
+    Make sure to address the candidate by their name, {name}.
+    """
+    
+    # Create prompt    
+    # Create config with the prompt
+    config: VoiceConfig = client.create_config(
+        name= generate_unique_id(),
+        prompt= prompt
+    )
+    
+    return config.id
+
+# Usage
+
+def make_twilio_call(phone_number):
+    account_sid = TWILIO_ACCOUNT_SID
+    auth_token = TWILIO_AUTH_TOKEN
+    twilio_client = Client(account_sid, auth_token)
+    evi_webhook_url = f"https://api.hume.ai/v0/evi/twilio?config_id={CONFIG_ID}&api_key={HUME_API_KEY}"
+
+    call = twilio_client.calls.create(
+        url=evi_webhook_url,
+        to=phone_number,
+        from_="15103986913"
+    )
+
+    print(f"Call SID: {call.sid}")
+    while call.status != "completed":
+        pass
+    print(CONFIG_ID)
+    client.delete_config(CONFIG_ID)
 
 
-#def generate_cover_letter
+    
 
+# Usage
+async def main():
+    phone_number = input("Enter phone number: ")
+    CONFIG_ID = make_prompt_and_config()
+    print(CONFIG_ID)
+    make_twilio_call(phone_number)
+
+asyncio.run(main())
 
 
 
