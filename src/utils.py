@@ -12,12 +12,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 OPENAI_KEY = os.getenv("OPENAI_KEY")
-client = OpenAI(api_key=OPENAI_KEY)
 HUME_API_KEY = os.getenv("HUME_API_KEY")
 TWILIO_ACCOUNT_SID=os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN=os.getenv("TWILIO_AUTH_TOKEN")
 CONFIG_ID=None
-client = HumeVoiceClient(HUME_API_KEY)
+openAIClient = OpenAI(api_key=OPENAI_KEY)
+
+humeClient = HumeVoiceClient(HUME_API_KEY)
 
 def get_base64_pdf_image(resume_image):    
     # Assuming we want the first page
@@ -48,7 +49,7 @@ def generate_questions(job_posting, base64_img_data_url):
         like 'tell me about yourself'. Try to simulate real-life interview questions as much as possible with the context of the job. 
         You need to understand the company and what they do via a web search."""
     
-    response = client.chat.completions.create(
+    response = openAIClient.chat.completions.create(
                     model="gpt-4o",
                     messages=[
                         {"role": "system", "content": prompt},
@@ -70,7 +71,7 @@ def questions_list(questions):
         "max_tokens": 2000
 
     }
-    response = client.chat.completions.create(**input_params).choices[0].message.content.strip()
+    response = openAIClient.chat.completions.create(**input_params).choices[0].message.content.strip()
     return response
 
 # Configuring Hume AI Prompt
@@ -93,7 +94,7 @@ def make_prompt_and_config(name="Toufiq", link="https://wellfound.com/jobs/30451
     
     # Create prompt    
     # Create config with the prompt
-    config: VoiceConfig = client.create_config(
+    config: VoiceConfig = humeClient.create_config(
         name= generate_unique_id(),
         prompt= prompt
     )
@@ -102,23 +103,23 @@ def make_prompt_and_config(name="Toufiq", link="https://wellfound.com/jobs/30451
 
 # Usage
 
-def make_twilio_call(phone_number):
+async def make_twilio_call(phone_number, config_id=CONFIG_ID):
     account_sid = TWILIO_ACCOUNT_SID
     auth_token = TWILIO_AUTH_TOKEN
     twilio_client = Client(account_sid, auth_token)
-    evi_webhook_url = f"https://api.hume.ai/v0/evi/twilio?config_id={CONFIG_ID}&api_key={HUME_API_KEY}"
+    evi_webhook_url = f"https://api.hume.ai/v0/evi/twilio?config_id={config_id}&api_key={HUME_API_KEY}"
 
     call = twilio_client.calls.create(
         url=evi_webhook_url,
         to=phone_number,
         from_="15103986913"
     )
+    # Wait for the call to complete
+    while call.status != 'completed':
+        await asyncio.sleep(1)
+        call = twilio_client.calls(call.sid).fetch()
 
-    print(f"Call SID: {call.sid}")
-    while call.status != "completed":
-        pass
-    print(CONFIG_ID)
-    client.delete_config(CONFIG_ID)
+    client.delete_config(config_id)
 
 
     
@@ -126,11 +127,10 @@ def make_twilio_call(phone_number):
 # Usage
 async def main():
     phone_number = input("Enter phone number: ")
-    CONFIG_ID = make_prompt_and_config()
-    print(CONFIG_ID)
-    make_twilio_call(phone_number)
+    await make_twilio_call(phone_number, make_prompt_and_config())
 
 asyncio.run(main())
+
 
 
 
